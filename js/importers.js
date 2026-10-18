@@ -327,6 +327,25 @@ function wordsOf(data) {
   return out;
 }
 
+async function readDropCap(worker, canvas, r) {
+  const w = Math.round(r.x1 - r.x0), h = Math.round(r.y1 - r.y0);
+  if (w < 8 || h < 8) return '';
+  const pad = Math.round(h * 0.15);
+  const c = document.createElement('canvas');
+  c.width = w + pad * 2; c.height = h + pad * 2;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  x.drawImage(canvas, Math.max(0, r.x0), Math.max(0, r.y0), w, h, pad, pad, w, h);
+  // Сначала как одиночный символ, потом как слово — берём первую заглавную букву.
+  for (const mode of ['10', '8']) {
+    await worker.setParameters({ tessedit_pageseg_mode: mode });
+    const { data } = await worker.recognize(c);
+    const letters = (data.text || '').replace(/[^\p{L}]/gu, '');
+    if (letters.length >= 1 && letters.length <= 2 && /^\p{Lu}/u.test(letters)) return letters[0];
+  }
+  return '';
+}
+
 export async function recognize(images, lang, onProgress) {
   await loadScript(CDN.tesseract);
   const code = langByCode(lang).tess;
@@ -347,7 +366,20 @@ export async function recognize(images, lang, onProgress) {
       const boxes = wordsOf(data)
         .filter((w) => w.confidence >= 20 && (w.confidence >= 50 || /\p{L}/u.test(w.text)))
         .map((w) => ({ text: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1, conf: w.confidence }));
-      pages.push(boxes.length ? layoutBlocks(boxes) : reflow(data.text || ''));
+      const blocks = boxes.length ? layoutBlocks(boxes) : reflow(data.text || '');
+      // Буквицы распознаём отдельно, как одиночную букву.
+      const caps = blocks.filter((b) => b.cap);
+      if (caps.length) {
+        for (const b of caps) {
+          // Если буквица уже распознана вместе с текстом, второй раз не добавляем.
+          if (!/^\p{Ll}/u.test(b.t)) continue;
+          const letter = await readDropCap(worker, canvas, b.cap).catch(() => '');
+          if (letter) b.t = letter + (/^[AIOАВИКОСУЯ]$/u.test(letter) && /^\p{Ll}{3,}/u.test(b.t) ? ' ' : '') + b.t;
+        }
+        await worker.setParameters({ tessedit_pageseg_mode: '3' });
+      }
+      caps.forEach((b) => delete b.cap);
+      pages.push(blocks);
     }
   } finally { await worker.terminate(); }
   return joinPages(pages);

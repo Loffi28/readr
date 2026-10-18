@@ -97,7 +97,8 @@ async function start() {
       openAddDialog({ files });
     });
   }
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // На localhost офлайн-кэш не включаем — при разработке он подсовывал бы старые файлы.
+  if ('serviceWorker' in navigator && location.protocol !== 'file:' && location.hostname !== 'localhost') {
     // Вышла новая версия — перезапускаемся, чтобы не работать на старом коде.
     let hadController = !!navigator.serviceWorker.controller;
     let reloading = false;

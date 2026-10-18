@@ -1,5 +1,5 @@
 // Офлайн-режим: оболочка приложения и библиотеки кэшируются, перевод всегда идёт в сеть.
-const VERSION = 'readr-v6';
+const VERSION = 'readr-v7';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/icon-maskable.png',
