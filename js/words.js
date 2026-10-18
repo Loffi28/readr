@@ -4,6 +4,7 @@ import { settings } from './state.js';
 import { langName } from './langs.js';
 import { loadLang, allTerms, saveTerm, deleteTerm, STATUS_LABEL, KNOWN, IGNORED, counts } from './terms.js';
 import { speak, ttsAvailable } from './tts.js';
+import { isIOS, syncAnki } from './anki.js';
 
 const FILTERS = [
   ['learning', 'Изучаю'],
@@ -171,12 +172,20 @@ function exportDialog(lang) {
     body: `
       <div class="menu-list">
         <button class="menu-item" data-x="csv"><strong>Таблица CSV</strong><span>Откроется в Excel или Google Таблицах</span></button>
-        <button class="menu-item" data-x="anki"><strong>Для Anki</strong><span>Файл с карточками: слово, перевод, пример. Только слова, которые изучаете</span></button>
+        ${!isIOS() && settings.ankiEnabled ? '<button class="menu-item" data-x="anki-live"><strong>Отправить в Anki сейчас</strong><span>Все изучаемые слова с переводом — сразу в колоду, без файлов</span></button>' : ''}
+        <button class="menu-item" data-x="anki"><strong>Файл для Anki</strong><span>Слово, перевод, пример. Только слова, которые изучаете</span></button>
       </div>`,
   });
   m.body.onclick = (e) => {
     const x = e.target.closest('[data-x]')?.dataset.x;
     if (!x) return;
+    if (x === 'anki-live') {
+      m.close();
+      syncAnki(lang)
+        .then((r) => toast(`Anki: добавлено ${r.added}, обновлено ${r.updated}`))
+        .catch((e) => toast(e.message, 'error'));
+      return;
+    }
     const terms = allTerms(lang);
     if (x === 'csv') {
       const rows = [['term', 'translation', 'status', 'notes', 'sentence'].join(',')]

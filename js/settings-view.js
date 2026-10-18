@@ -8,6 +8,7 @@ import { translateText } from './translate.js';
 import { voicesFor, speak, ttsAvailable } from './tts.js';
 import { openTypeDialog } from './reader.js';
 import { installState, promptInstall } from './install.js';
+import { isIOS, connectAnki, ankiReachable, syncAnki, ANKICONNECT_CODE, deckFor } from './anki.js';
 import { connect, disconnect, syncNow, syncReady, syncRunning, TOKEN_URL } from './sync.js';
 import { AI_PROVIDERS, testAi, providerForKey, defaultModel } from './llm.js';
 
@@ -86,6 +87,11 @@ export async function renderSettings(view) {
         <h2>Цели</h2>
         <label class="set-row"><span>Новых слов в день</span><input class="input narrow" type="number" min="1" max="200" id="s-goal" value="${settings.dailyGoal}"></label>
         <label class="set-row"><span>Карточек за раз</span><input class="input narrow" type="number" min="5" max="200" id="s-review" value="${settings.reviewSize}"></label>
+      </div>
+
+      <div class="set-group" id="anki-group">
+        <h2>Anki</h2>
+        <div id="anki-box"></div>
       </div>
 
       <div class="set-group" id="sync-group">
@@ -207,6 +213,65 @@ export async function renderSettings(view) {
     });
     drawAi();
   };
+  const drawAnki = async () => {
+    const box = $('#anki-box', view);
+    if (!box) return;
+    if (isIOS()) {
+      box.innerHTML = `
+        <p class="set-note">На iPhone кнопка «В Anki» в панели слова открывает AnkiMobile и добавляет карточку в колоду «${esc(deckFor(settings.lang))}». Слова, отправленные с ноутбука, приходят на телефон обычной синхронизацией AnkiWeb.</p>
+        <label class="set-row switch"><span>Базовый тип карточки<small>Включите, если на телефоне нет типа карточек Readr (он появляется после подключения Anki на ноутбуке и синхронизации AnkiWeb).</small></span><input type="checkbox" id="s-anki-basic" ${settings.ankiMobileBasic ? 'checked' : ''}></label>`;
+      $('#s-anki-basic', box).onchange = (e) => saveSettings({ ankiMobileBasic: e.target.checked });
+      return;
+    }
+    if (!settings.ankiEnabled) {
+      box.innerHTML = `
+        <p class="set-note">Слова будут сами попадать в Anki на этом компьютере красивыми карточками: слово, предложение из текста, перевод, озвучка. А выученное в Anki станет здесь «Знаю».</p>
+        <ol class="install-steps">
+          <li>Запустите Anki и откройте «Инструменты → Дополнения → Получить дополнения».</li>
+          <li>Вставьте код <b class="code">${ANKICONNECT_CODE}</b> (дополнение AnkiConnect), нажмите OK и перезапустите Anki.</li>
+          <li>Нажмите «Подключить» ниже — в Anki появится окно, разрешите доступ. Если браузер спросит про доступ к устройствам в локальной сети, тоже разрешите.</li>
+        </ol>
+        <div class="row gap top-gap"><button class="btn primary" id="s-anki-connect">Подключить</button></div>`;
+      $('#s-anki-connect', box).onclick = async (e) => {
+        const b = e.currentTarget;
+        b.disabled = true;
+        b.textContent = 'Ждём разрешения в Anki…';
+        try {
+          await connectAnki();
+          const r = await syncAnki();
+          toast(`Anki подключён. Отправлено слов: ${r.added}`);
+        } catch (err) { toast(err.message || 'Не получилось', 'error'); }
+        drawAnki();
+      };
+      return;
+    }
+    const online = await ankiReachable();
+    const when = settings.ankiLast ? new Date(settings.ankiLast).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'ещё не было';
+    box.innerHTML = `
+      <p class="sync-status ${online && !settings.ankiError ? '' : 'bad'}">${online ? (settings.ankiError ? 'Ошибка: ' + esc(settings.ankiError) : 'Anki на связи. Последняя синхронизация: ' + esc(when)) : 'Anki не запущен — синхронизация продолжится, когда вы его откроете'}</p>
+      <label class="set-row switch"><span>Сразу отправлять изучаемые слова<small>Слова со статусом 1–4 и переводом уходят в колоду «${esc(deckFor(settings.lang))}».</small></span><input type="checkbox" data-anki="ankiAuto" ${settings.ankiAuto ? 'checked' : ''}></label>
+      <label class="set-row switch"><span>Прогресс из Anki<small>Как только слово закрепилось в Anki (интервал от 3 недель), здесь оно становится «Знаю».</small></span><input type="checkbox" data-anki="ankiStatuses" ${settings.ankiStatuses ? 'checked' : ''}></label>
+      <label class="set-row switch"><span>Озвучка в карточке</span><input type="checkbox" data-anki="ankiAudio" ${settings.ankiAudio ? 'checked' : ''}></label>
+      <label class="set-row switch"><span>Вторая карточка «перевод → слово»</span><input type="checkbox" data-anki="ankiReverse" ${settings.ankiReverse ? 'checked' : ''}></label>
+      <label class="set-row"><span>Колода</span><input class="input" id="s-anki-deck" value="${esc(settings.ankiDeck)}"></label>
+      <div class="row gap wrap top-gap">
+        <button class="btn" id="s-anki-sync" ${online ? '' : 'disabled'}>Синхронизировать с Anki</button>
+        <button class="btn ghost small" id="s-anki-off">Отключить</button>
+      </div>`;
+    box.querySelectorAll('[data-anki]').forEach((c) => { c.onchange = () => saveSettings({ [c.dataset.anki]: c.checked }); });
+    $('#s-anki-deck', box).onchange = (e) => saveSettings({ ankiDeck: e.target.value.trim() || 'Readr' });
+    $('#s-anki-sync', box).onclick = async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        const r = await syncAnki();
+        toast(`Anki: добавлено ${r.added}, обновлено ${r.updated}, статусов из Anki ${r.statuses}`);
+      } catch (err) { toast(err.message, 'error'); }
+      drawAnki();
+    };
+    $('#s-anki-off', box).onclick = async () => { await saveSettings({ ankiEnabled: false }); drawAnki(); };
+  };
+  drawAnki();
+
   const drawSync = () => {
     const box = $('#sync-box', view);
     if (!box) return;

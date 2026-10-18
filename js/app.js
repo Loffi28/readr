@@ -6,6 +6,7 @@ import { loadLang, dueTerms } from './terms.js';
 import './install.js';
 import { providerForKey, defaultModel } from './llm.js';
 import { syncReady, syncNow } from './sync.js';
+import { isIOS, ankiReachable, syncAnki } from './anki.js';
 
 const routes = {
   library: () => import('./library.js').then((m) => m.renderLibrary),
@@ -72,6 +73,30 @@ function setupSync() {
   run();
 }
 
+// Anki на ноутбуке: новые слова уходят туда сами, а выученное в Anki возвращается сюда.
+function setupAnki() {
+  if (isIOS()) return;
+  let timer = null;
+  const run = async ({ announce } = {}) => {
+    clearTimeout(timer);
+    if (!settings.ankiEnabled || !(await ankiReachable())) return;
+    try {
+      const r = await syncAnki();
+      if (announce && r.statuses) toast(`Из Anki обновлено статусов: ${r.statuses}`);
+      if (r.statuses && ['library', 'words', 'stats'].includes(document.body.dataset.route)) route();
+    } catch { /* Anki закрыт или занят — попробуем позже */ }
+  };
+  document.addEventListener('terms-changed', () => {
+    if (!settings.ankiAuto) return;
+    clearTimeout(timer);
+    timer = setTimeout(run, 6000);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && Date.now() - (settings.ankiLast || 0) > 60000) run({ announce: true });
+  });
+  run({ announce: true });
+}
+
 async function start() {
   await loadSettings();
   // Ключ, вставленный не в тот сервис (например, ключ посредника в «Claude»), переносим в нужный.
@@ -87,6 +112,7 @@ async function start() {
   if (!location.hash) history.replaceState(null, '', '#/library');
   await route();
   setupSync();
+  setupAnki();
   navigator.storage?.persist?.().catch(() => {});
   // Windows: «Открыть с помощью Readr» для PDF, EPUB и TXT.
   if ('launchQueue' in window) {

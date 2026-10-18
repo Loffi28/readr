@@ -9,6 +9,7 @@ import {
 } from './terms.js';
 import { lookup, translateText, POS_RU } from './translate.js';
 import { aiFor, wordInContext } from './llm.js';
+import { isIOS, sendTerm, ankiMobileUrl } from './anki.js';
 import { speak, speakSequence, stopSpeech, ttsAvailable } from './tts.js';
 
 const REVERSO = {
@@ -339,16 +340,19 @@ export async function renderReader(view, id) {
         <summary>Заметка</summary>
         <textarea id="wp-note" class="input" rows="2" placeholder="Пример, грамматика, ассоциация">${esc(term?.notes || '')}</textarea>
       </details>
+      <div class="wp-anki" id="wp-anki"></div>
       <nav class="wp-links">${linksFor(info.text).map(([n, u]) => `<a href="${u}" target="_blank" rel="noopener">${esc(n)}${icon('external')}</a>`).join('')}</nav>
       ${term ? `<button class="link-btn danger" data-act="del">${icon('trash')}<span>Удалить из словаря</span></button>` : ''}`;
 
     if (status === 0) bump('lookups');
     let mainSuggestion = '';
     let aiMeaning = '';
+    let aiLemma = '';
     if (aiFor('aiWords')) {
       wordInContext(info.text, info.sentence, lang).then((r) => {
         if (token !== lookupToken) return;
         aiMeaning = r.meaning;
+        aiLemma = r.lemma;
         if (aiMeaning) mainSuggestion = aiMeaning;
         const lemma = r.lemma && r.lemma.toLowerCase() !== info.text.toLowerCase() ? r.lemma : '';
         $('#wp-ai', panel).innerHTML = `
@@ -384,6 +388,7 @@ export async function renderReader(view, id) {
     const note = $('#wp-note', panel);
     const current = () => getTerm(lang, info.text)?.status ?? 0;
     const save = (patch) => saveTerm(lang, info.text, {
+      ...(aiLemma ? { lemma: aiLemma } : {}),
       sentence: info.sentence,
       ...(info.isPhrase ? { words: info.keys } : {}),
       ...patch,
@@ -417,6 +422,7 @@ export async function renderReader(view, id) {
       else if (act === 'shrink-l') shrink(-1);
       else if (act === 'shrink-r') shrink(1);
       else if (act === 'del') { await deleteTerm(lang, info.text); toast('Удалено из словаря'); openPanel(); }
+      else if (act === 'anki') await toAnki(e.target.closest('[data-act]'));
     };
 
     async function setStatus(n) {
@@ -445,6 +451,37 @@ export async function renderReader(view, id) {
       catch { box.textContent = 'Нет связи с переводчиком.'; }
     }
     panel._translateSentence = translateSentence;
+
+    // ---- Anki ----
+    function drawAnki() {
+      const box = $('#wp-anki', panel);
+      if (!box) return;
+      const t = getTerm(lang, info.text);
+      const inAnki = t?.ankiId;
+      box.innerHTML = `<button class="btn small ${inAnki ? 'ghost' : ''}" data-act="anki" title="${inAnki ? 'Обновить карточку в Anki' : 'Создать карточку в Anki'}">${inAnki ? icon('check') + '<span>Обновить в Anki</span>' : icon('cards') + '<span>В Anki</span>'}</button>`;
+    }
+    async function toAnki(btn) {
+      // Слово ещё не в словаре — добавляем как изучаемое с лучшим переводом.
+      let t = getTerm(lang, info.text);
+      const translation = tr.value.trim() || mainSuggestion;
+      if (!translation) { toast('Сначала выберите перевод', 'error'); return; }
+      if (!t || t.status < 1 || t.status >= KNOWN || !t.translation) {
+        if (!tr.value.trim()) tr.value = translation;
+        const st = t && t.status >= 1 && t.status < KNOWN ? t.status : 1;
+        t = await save({ status: st, translation: tr.value.trim(), notes: note.value.trim() });
+        refreshPanelStatus();
+      }
+      if (isIOS()) { location.href = ankiMobileUrl(t); return; }
+      if (!settings.ankiEnabled) { toast('Подключите Anki: Настройки → Anki', 'error'); return; }
+      btn.disabled = true;
+      try {
+        const r = await sendTerm(t);
+        toast(r === 'updated' ? 'Карточка в Anki обновлена' : 'Добавлено в Anki');
+      } catch (err) { toast(err.message || 'Anki не ответил', 'error'); }
+      btn.disabled = false;
+      drawAnki();
+    }
+    drawAnki();
 
     // На телефоне прокручиваем текст, чтобы слово не пряталось под листом.
     if (isNarrow()) {

@@ -451,6 +451,8 @@ input[type="range"] { width: 100%; accent-color: var(--clay); }
 .wp-notes { margin-bottom: 14px; }
 .wp-notes summary { cursor: pointer; color: var(--ink-2); font-size: 14px; font-weight: 500; padding: 4px 0; }
 .wp-notes textarea { margin-top: 6px; font-size: 15px; }
+.wp-anki { margin-bottom: 12px; }
+.wp-anki .ic { width: 17px; height: 17px; }
 .wp-links { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 12px 0; border-top: 1px solid var(--line); margin-bottom: 4px; }
 .wp-links a { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; text-decoration: none; }
 .wp-links .ic { width: 14px; height: 14px; }
@@ -547,6 +549,7 @@ input[type="range"] { width: 100%; accent-color: var(--clay); }
 .switch input:checked { background: var(--clay); }
 .switch input:checked::after { transform: translateX(18px); }
 .install-steps { margin: 12px 0 0; padding-left: 20px; color: var(--ink-2); display: grid; gap: 8px; }
+.code { font-family: ui-monospace, Consolas, monospace; background: var(--paper-2); padding: 1px 6px; border-radius: 6px; user-select: all; }
 .sync-status { margin: 0 0 12px; padding: 9px 12px; border-radius: 10px; background: var(--sage); color: var(--known-ink); font-size: 14px; }
 .sync-status.bad { background: var(--rose); color: var(--danger); }
 .set-foot { color: var(--muted); font-size: 13px; margin-top: 24px; }

@@ -78,6 +78,15 @@ export async function saveTerm(lang, text, patch = {}) {
   return term;
 }
 
+// Служебные поля (привязка к карточке Anki и т. п.) — без отметки изменения и без перекраски текста.
+export async function patchTerm(lang, text, patch) {
+  const map = await loadLang(lang);
+  const t = map.get(normKey(text));
+  if (!t) return;
+  Object.assign(t, patch);
+  await db.put('terms', t);
+}
+
 export async function deleteTerm(lang, text) {
   const map = await loadLang(lang);
   const k = normKey(text);

@@ -33,6 +33,15 @@ export const DEFAULTS = {
   syncLogin: '',
   syncLast: 0,
   syncError: '',
+  ankiEnabled: false,    // подключён AnkiConnect
+  ankiAuto: true,        // сразу отправлять изучаемые слова в Anki
+  ankiStatuses: true,    // выученное в Anki становится «Знаю» здесь
+  ankiAudio: true,       // озвучка в карточке
+  ankiReverse: false,    // вторая карточка «перевод → слово»
+  ankiDeck: 'Readr',
+  ankiMobileBasic: false, // на iPhone добавлять базовый тип карточки
+  ankiLast: 0,
+  ankiError: '',
 };
 
 export const settings = { ...DEFAULTS };
