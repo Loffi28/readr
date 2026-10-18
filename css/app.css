@@ -547,6 +547,8 @@ input[type="range"] { width: 100%; accent-color: var(--clay); }
 .switch input:checked { background: var(--clay); }
 .switch input:checked::after { transform: translateX(18px); }
 .install-steps { margin: 12px 0 0; padding-left: 20px; color: var(--ink-2); display: grid; gap: 8px; }
+.sync-status { margin: 0 0 12px; padding: 9px 12px; border-radius: 10px; background: var(--sage); color: var(--known-ink); font-size: 14px; }
+.sync-status.bad { background: var(--rose); color: var(--danger); }
 .set-foot { color: var(--muted); font-size: 13px; margin-top: 24px; }
 
 /* ---------- Телефон ---------- */

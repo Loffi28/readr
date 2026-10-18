@@ -1,11 +1,11 @@
 // Офлайн-режим: оболочка приложения и библиотеки кэшируются, перевод всегда идёт в сеть.
-const VERSION = 'readr-v5';
+const VERSION = 'readr-v6';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/icon-maskable.png',
   'js/app.js', 'js/appearance.js', 'js/db.js', 'js/importers.js', 'js/install.js', 'js/langs.js', 'js/layout.js', 'js/llm.js',
   'js/library.js', 'js/reader.js', 'js/review.js', 'js/sample.js', 'js/settings-view.js', 'js/state.js',
-  'js/stats.js', 'js/terms.js', 'js/texts.js', 'js/tokenize.js', 'js/translate.js', 'js/tts.js',
+  'js/stats.js', 'js/sync.js', 'js/terms.js', 'js/texts.js', 'js/tokenize.js', 'js/translate.js', 'js/tts.js',
   'js/util.js', 'js/words.js',
 ];
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];

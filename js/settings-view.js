@@ -8,6 +8,7 @@ import { translateText } from './translate.js';
 import { voicesFor, speak, ttsAvailable } from './tts.js';
 import { openTypeDialog } from './reader.js';
 import { installState, promptInstall } from './install.js';
+import { connect, disconnect, syncNow, syncReady, syncRunning, TOKEN_URL } from './sync.js';
 import { AI_PROVIDERS, testAi, providerForKey, defaultModel } from './llm.js';
 
 const BACKUP_STORES = ['texts', 'bodies', 'terms', 'days', 'kv'];
@@ -87,9 +88,14 @@ export async function renderSettings(view) {
         <label class="set-row"><span>Карточек за раз</span><input class="input narrow" type="number" min="5" max="200" id="s-review" value="${settings.reviewSize}"></label>
       </div>
 
+      <div class="set-group" id="sync-group">
+        <h2>Синхронизация</h2>
+        <div id="sync-box"></div>
+      </div>
+
       <div class="set-group">
         <h2>Данные</h2>
-        <p class="set-note">Тексты и словарь хранятся только на этом устройстве${est ? ` (занято ${fmt(Math.round(est.usage / 1048576))} МБ)` : ''}. Чтобы перенести их с ноутбука на iPhone и обратно, сохраните копию и откройте её на другом устройстве — данные объединятся.</p>
+        <p class="set-note">Тексты и словарь хранятся только на этом устройстве${est ? ` (занято ${fmt(Math.round(est.usage / 1048576))} МБ)` : ''}. Копия пригодится как запасной вариант или для переноса без синхронизации: сохраните её и откройте на другом устройстве — данные объединятся.</p>
         <div class="row gap wrap">
           <button class="btn" id="s-backup">${icon('download')}<span>Сохранить копию</span></button>
           <label class="btn ghost">${icon('upload')}<span>Загрузить копию</span><input type="file" accept=".json,application/json" id="s-restore" hidden></label>
@@ -201,6 +207,59 @@ export async function renderSettings(view) {
     });
     drawAi();
   };
+  const drawSync = () => {
+    const box = $('#sync-box', view);
+    if (!box) return;
+    if (!syncReady()) {
+      box.innerHTML = `
+        <p class="set-note">Ноутбук и телефон будут обмениваться словарём, текстами и прогрессом через секретное хранилище (gist) в вашем GitHub. Нужно один раз создать токен и вставить его на каждом устройстве.</p>
+        <ol class="install-steps">
+          <li>Откройте <a href="${TOKEN_URL}" target="_blank" rel="noopener">создание токена на GitHub</a> — галочка gist уже стоит.</li>
+          <li>В поле Expiration выберите No expiration и нажмите Generate token внизу страницы.</li>
+          <li>Скопируйте токен (начинается с ghp_) и вставьте сюда. На втором устройстве — тот же токен.</li>
+        </ol>
+        <div class="row gap wrap top-gap">
+          <input class="input" type="password" id="s-sync-token" autocomplete="off" spellcheck="false" placeholder="ghp_…" style="flex:1;min-width:200px">
+          <button class="btn primary" id="s-sync-connect">Подключить</button>
+        </div>`;
+      $('#s-sync-connect', box).onclick = async (e) => {
+        const b = e.currentTarget;
+        const token = $('#s-sync-token', box).value.trim();
+        if (!token) { $('#s-sync-token', box).focus(); return; }
+        b.disabled = true;
+        b.textContent = 'Подключаю…';
+        try {
+          const r = await connect(token);
+          toast(r?.changes ? `Подключено, получено изменений: ${r.changes}` : 'Подключено. Данные синхронизируются');
+        } catch (err) {
+          toast(err.message || 'Не удалось подключиться', 'error');
+          if (!settings.syncGistId) await disconnect();
+        }
+        drawSync();
+      };
+      return;
+    }
+    const when = settings.syncLast
+      ? new Date(settings.syncLast).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+      : 'ещё не было';
+    box.innerHTML = `
+      <p class="set-note">Подключено к GitHub <b>${esc(settings.syncLogin || '')}</b>. Синхронизация идёт сама: при открытии приложения, при возврате к нему и через несколько секунд после изменений.</p>
+      <p class="sync-status ${settings.syncError ? 'bad' : ''}">${syncRunning() ? 'Синхронизирую…' : settings.syncError ? 'Ошибка: ' + esc(settings.syncError) : 'Последняя синхронизация: ' + esc(when)}</p>
+      <div class="row gap wrap">
+        <button class="btn" id="s-sync-now" ${syncRunning() ? 'disabled' : ''}>Синхронизировать сейчас</button>
+        <button class="btn ghost small" id="s-sync-off">Отключить</button>
+      </div>`;
+    $('#s-sync-now', box).onclick = () => syncNow().then((r) => toast(r?.changes ? `Готово, изменений: ${r.changes}` : 'Всё уже синхронизировано')).catch((err) => toast(err.message, 'error'));
+    $('#s-sync-off', box).onclick = async () => {
+      if (!(await confirmDialog('Отключить синхронизацию на этом устройстве? Данные здесь и в GitHub сохранятся.', 'Отключить'))) return;
+      await disconnect();
+      drawSync();
+    };
+  };
+  drawSync();
+  const onSyncState = () => { if (document.body.contains(view) && $('#sync-box', view)) drawSync(); };
+  document.addEventListener('sync-state', onSyncState);
+
   $('#s-wpp', view).onchange = async (e) => {
     await saveSettings({ wordsPerPage: +e.target.value });
     for (const t of await listTexts()) await repaginate(t.id);
@@ -253,7 +312,7 @@ export async function renderSettings(view) {
     const data = { app: 'readr', version: 1, exported: new Date().toISOString() };
     for (const s of BACKUP_STORES) data[s] = await db.all(s);
     // Ключ ИИ в копию не кладём.
-    data.kv = data.kv.map((row) => (row.k === 'settings' ? { ...row, v: { ...row.v, aiKey: '', aiKeys: {} } } : row));
+    data.kv = data.kv.map((row) => (row.k === 'settings' ? { ...row, v: { ...row.v, aiKey: '', aiKeys: {}, syncToken: '' } } : row));
     download(`readr-backup-${today()}.json`, JSON.stringify(data));
   };
   $('#s-restore', view).onchange = async (e) => {
@@ -276,6 +335,7 @@ export async function renderSettings(view) {
       }
       await db.bulkPut('days', [...days.values()]);
       forgetCache();
+      document.dispatchEvent(new Event('local-change'));
       toast(`Загружено: ${(data.texts || []).length} текстов, ${terms.length} слов обновлено`);
       renderSettings(view);
     } catch { toast('Это не файл копии Readr', 'error'); }
@@ -289,4 +349,5 @@ export async function renderSettings(view) {
     location.reload();
   };
   $('#s-install', view)?.addEventListener('click', promptInstall);
+  return () => document.removeEventListener('sync-state', onSyncState);
 }

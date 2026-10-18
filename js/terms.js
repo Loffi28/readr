@@ -1,6 +1,6 @@
 // Личный словарь: слова и фразы со статусами изучения.
 // Статус: нет записи — новое; 1–4 — изучаю; 5 — знаю; -1 — игнорирую.
-import { db } from './db.js';
+import { db, changed } from './db.js';
 import { bump } from './state.js';
 import { normKey } from './tokenize.js';
 
@@ -73,6 +73,7 @@ export async function saveTerm(lang, text, patch = {}) {
   map.set(k, term);
   indexPhrase(lang, term);
   await db.put('terms', term);
+  changed();
   document.dispatchEvent(new CustomEvent('terms-changed', { detail: { lang, keys: [k] } }));
   return term;
 }
@@ -85,6 +86,8 @@ export async function deleteTerm(lang, text) {
   map.delete(k);
   indexPhrase(lang, t, false);
   await db.del('terms', t.key);
+  await db.tomb('terms', t.key);
+  changed();
   document.dispatchEvent(new CustomEvent('terms-changed', { detail: { lang, keys: [k] } }));
 }
 
@@ -102,6 +105,7 @@ export async function markKnown(lang, keys) {
   if (!rows.length) return 0;
   await db.bulkPut('terms', rows);
   await bump('known', rows.length);
+  changed();
   document.dispatchEvent(new CustomEvent('terms-changed', { detail: { lang, keys: rows.map((r) => normKey(r.text)) } }));
   return rows.length;
 }

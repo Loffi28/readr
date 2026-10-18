@@ -59,4 +59,13 @@ export const db = {
     return row ? row.v : fallback;
   },
   kvSet: (k, v) => db.put('kv', { k, v }),
+  // Отметка об удалении — чтобы удаление дошло до других устройств при синхронизации.
+  async tomb(kind, key) {
+    const t = await db.kvGet('tombs', { texts: {}, terms: {} });
+    (t[kind] ||= {})[key] = Date.now();
+    await db.kvSet('tombs', t);
+  },
 };
+
+// Сигнал «данные изменились на этом устройстве» — по нему запускается синхронизация.
+export const changed = () => document.dispatchEvent(new Event('local-change'));

@@ -1,4 +1,4 @@
-import { db } from './db.js';
+import { db, changed } from './db.js';
 import { uid } from './util.js';
 import { settings } from './state.js';
 import { wordKeys } from './tokenize.js';
@@ -50,11 +50,12 @@ export async function createText({ title, blocks, paragraphs, lang, source = 'te
     words, unique: vocab.size, pagesTotal: pages.length,
     page: 0, maxPage: 0, finished: false,
     tint: TINTS[Math.floor(Math.random() * TINTS.length)],
-    created: Date.now(), opened: 0,
+    created: Date.now(), updated: Date.now(), opened: 0,
     preview: paragraphs.join(' ').slice(0, 220),
   };
   await db.put('bodies', { id, paragraphs, kinds, counts, pages, vocab: [...vocab] });
   await db.put('texts', meta);
+  changed();
   return meta;
 }
 
@@ -63,13 +64,16 @@ export const getBody = (id) => db.get('bodies', id);
 export const updateText = async (id, patch) => {
   const t = await db.get('texts', id);
   if (!t) return;
-  Object.assign(t, patch);
+  Object.assign(t, patch, { updated: Date.now() });
   await db.put('texts', t);
+  changed();
   return t;
 };
 export async function deleteText(id) {
   await db.del('texts', id);
   await db.del('bodies', id);
+  await db.tomb('texts', id);
+  changed();
 }
 export const listTexts = () => db.all('texts');
 

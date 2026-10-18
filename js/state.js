@@ -1,4 +1,4 @@
-import { db } from './db.js';
+import { db, changed } from './db.js';
 import { today } from './util.js';
 
 export const DEFAULTS = {
@@ -28,6 +28,11 @@ export const DEFAULTS = {
   aiWords: true,         // перевод слова по контексту
   aiSentences: true,     // перевод предложений и абзацев
   aiOcr: true,           // исправлять текст с фото и сканов
+  syncToken: '',         // токен GitHub (право gist)
+  syncGistId: '',
+  syncLogin: '',
+  syncLast: 0,
+  syncError: '',
 };
 
 export const settings = { ...DEFAULTS };
@@ -50,4 +55,5 @@ export async function bump(field, n = 1) {
   const row = (await db.get('days', date)) || { date, read: 0, known: 0, lookups: 0, reviews: 0, added: 0 };
   row[field] = (row[field] || 0) + n;
   await db.put('days', row);
+  changed();
 }

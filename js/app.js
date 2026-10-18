@@ -1,10 +1,11 @@
-import { $, $$ } from './util.js';
+import { $, $$, toast, plural } from './util.js';
 import { loadSettings, settings, saveSettings } from './state.js';
 import { applyAppearance } from './appearance.js';
 import { langName } from './langs.js';
 import { loadLang, dueTerms } from './terms.js';
 import './install.js';
 import { providerForKey, defaultModel } from './llm.js';
+import { syncReady, syncNow } from './sync.js';
 
 const routes = {
   library: () => import('./library.js').then((m) => m.renderLibrary),
@@ -46,6 +47,31 @@ async function updateBadge() {
   $('#rail-lang').textContent = langName(settings.lang);
 }
 
+// Синхронизация с другими устройствами: при запуске, при возврате в приложение и после правок.
+function setupSync() {
+  let timer = null;
+  const run = () => {
+    clearTimeout(timer);
+    timer = null;
+    if (syncReady() && navigator.onLine !== false) syncNow().catch(() => {});
+  };
+  document.addEventListener('local-change', () => { clearTimeout(timer); timer = setTimeout(run, 8000); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (timer) run(); } // уходим из приложения — отправляем несохранённое
+    else if (Date.now() - (settings.syncLast || 0) > 20000) run();
+  });
+  window.addEventListener('online', run);
+  document.addEventListener('synced', (e) => {
+    const where = document.body.dataset.route;
+    const n = e.detail.changes;
+    toast(`Синхронизировано: ${n} ${plural(n, 'изменение', 'изменения', 'изменений')} с другого устройства`);
+    // Библиотеку, словарь и статистику перерисовываем; чтение и настройки не трогаем.
+    if (!['read', 'settings'].includes(where) && !document.querySelector('.modal-wrap')) route();
+    updateBadge();
+  });
+  run();
+}
+
 async function start() {
   await loadSettings();
   // Ключ, вставленный не в тот сервис (например, ключ посредника в «Claude»), переносим в нужный.
@@ -60,6 +86,7 @@ async function start() {
   window.addEventListener('hashchange', route);
   if (!location.hash) history.replaceState(null, '', '#/library');
   await route();
+  setupSync();
   navigator.storage?.persist?.().catch(() => {});
   // Windows: «Открыть с помощью Readr» для PDF, EPUB и TXT.
   if ('launchQueue' in window) {

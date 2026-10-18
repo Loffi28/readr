@@ -459,7 +459,7 @@ export async function renderReader(view, id) {
   // Изменения словаря — перекрашиваем слова на странице.
   const onTermsChanged = (e) => {
     if (e.detail.lang !== lang) return;
-    if (e.detail.keys.some((k) => k.includes(' '))) { rerenderParas(); return; }
+    if (e.detail.keys.some((k) => k === '*' || k.includes(' '))) { rerenderParas(); return; }
     const keys = new Set(e.detail.keys);
     for (const el of $$('.w', pageText)) {
       if (keys.has(el.dataset.k)) el.className = `w ${cls(statusOf(lang, el.dataset.k))}${el.classList.contains('inph') ? ' inph' : ''}${el.classList.contains('sel') ? ' sel' : ''}`;
