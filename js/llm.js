@@ -5,6 +5,12 @@ import { db } from './db.js';
 import { settings } from './state.js';
 
 export const AI_PROVIDERS = {
+  plusvibe: {
+    name: 'PlusVibe (Claude из России, оплата в рублях)',
+    base: 'https://plusvibeapi.ru/v1',
+    model: 'claude-haiku-5.5',
+    keyUrl: 'https://plusvibeapi.ru',
+  },
   claude: {
     name: 'Claude (Anthropic)',
     models: [['claude-haiku-5-5', 'Haiku 5.5 — дешёвый и быстрый'], ['claude-sonnet-5-5', 'Sonnet 5.5 — точнее'], ['claude-opus-5-5', 'Opus 5.5 — самый умный, дороже']],
@@ -31,6 +37,16 @@ export const AI_PROVIDERS = {
 };
 
 const ANTHROPIC_SDK = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.39.0/+esm';
+
+// Сервис по виду ключа: так ключ посредника не уйдёт по ошибке в официальный API.
+export function providerForKey(key) {
+  if (/^sk-pv-/.test(key)) return 'plusvibe';
+  if (/^sk-ant-/.test(key)) return 'claude';
+  if (/^sk-or-/.test(key)) return 'openrouter';
+  if (/^AIza/.test(key)) return 'gemini';
+  return null;
+}
+export const defaultModel = (prov) => AI_PROVIDERS[prov]?.model || AI_PROVIDERS[prov]?.models?.[0][0] || '';
 
 export const aiReady = () => settings.aiProvider && settings.aiProvider !== 'off'
   && (settings.aiKey || settings.aiProvider === 'custom');
@@ -75,13 +91,14 @@ async function openaiComplete(system, user, maxTokens) {
   const headers = { 'Content-Type': 'application/json' };
   if (settings.aiKey) headers.Authorization = 'Bearer ' + settings.aiKey;
   if (settings.aiProvider === 'openrouter') headers['X-Title'] = 'Readr';
+  if (settings.aiProvider === 'plusvibe') headers['X-App'] = 'Readr';
   const r = await fetch(base + '/chat/completions', {
     method: 'POST',
     headers,
     body: JSON.stringify({
       model: settings.aiModel || p.model,
       max_tokens: maxTokens,
-      temperature: 0.2,
+      // temperature не передаём: Claude Haiku 5.5 и новее отклоняют нестандартные значения.
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     }),
   });

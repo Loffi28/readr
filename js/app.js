@@ -1,9 +1,10 @@
 import { $, $$ } from './util.js';
-import { loadSettings, settings } from './state.js';
+import { loadSettings, settings, saveSettings } from './state.js';
 import { applyAppearance } from './appearance.js';
 import { langName } from './langs.js';
 import { loadLang, dueTerms } from './terms.js';
 import './install.js';
+import { providerForKey, defaultModel } from './llm.js';
 
 const routes = {
   library: () => import('./library.js').then((m) => m.renderLibrary),
@@ -47,6 +48,11 @@ async function updateBadge() {
 
 async function start() {
   await loadSettings();
+  // Ключ, вставленный не в тот сервис (например, ключ посредника в «Claude»), переносим в нужный.
+  const guess = settings.aiKey && providerForKey(settings.aiKey);
+  if (guess && guess !== settings.aiProvider && settings.aiProvider !== 'off') {
+    await saveSettings({ aiProvider: guess, aiModel: defaultModel(guess) });
+  }
   applyAppearance();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyAppearance);
   document.addEventListener('terms-changed', () => updateBadge());

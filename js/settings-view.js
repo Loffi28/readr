@@ -8,7 +8,7 @@ import { translateText } from './translate.js';
 import { voicesFor, speak, ttsAvailable } from './tts.js';
 import { openTypeDialog } from './reader.js';
 import { installState, promptInstall } from './install.js';
-import { AI_PROVIDERS, testAi } from './llm.js';
+import { AI_PROVIDERS, testAi, providerForKey, defaultModel } from './llm.js';
 
 const BACKUP_STORES = ['texts', 'bodies', 'terms', 'days', 'kv'];
 
@@ -156,13 +156,30 @@ export async function renderSettings(view) {
       <label class="set-row switch"><span>Перевод предложений и абзацев<small>Вместо Google; если ИИ не ответит, перевод возьмётся из Google.</small></span><input type="checkbox" data-ai="aiSentences" ${settings.aiSentences ? 'checked' : ''}></label>
       <label class="set-row switch"><span>Исправлять текст с фото и сканов</span><input type="checkbox" data-ai="aiOcr" ${settings.aiOcr ? 'checked' : ''}></label>
       <div class="set-row"><span></span><button class="btn ghost small" id="s-ai-test">Проверить</button></div>`;
-    $('#s-ai-key', box).onchange = (e) => saveSettings({ aiKey: e.target.value.trim() });
+    $('#s-ai-key', box).onchange = async (e) => {
+      const key = e.target.value.trim();
+      const guess = providerForKey(key);
+      if (guess && guess !== settings.aiProvider) {
+        await saveSettings({ aiKey: key, aiProvider: guess, aiModel: defaultModel(guess) });
+        $('#s-ai-provider', view).value = guess;
+        toast('Это ключ ' + AI_PROVIDERS[guess].name.split(' (')[0] + ' — сервис выбран автоматически');
+        drawAi();
+      } else await saveSettings({ aiKey: key });
+    };
     $('#s-ai-model', box).onchange = (e) => saveSettings({ aiModel: e.target.value.trim() });
     $('#s-ai-base', box)?.addEventListener('change', (e) => saveSettings({ aiBaseUrl: e.target.value.trim() }));
     box.querySelectorAll('[data-ai]').forEach((c) => { c.onchange = () => saveSettings({ [c.dataset.ai]: c.checked }); });
     $('#s-ai-test', box).onclick = async (e) => {
       const b = e.currentTarget;
-      await saveSettings({ aiKey: $('#s-ai-key', box).value.trim(), aiModel: $('#s-ai-model', box).value.trim() });
+      const key = $('#s-ai-key', box).value.trim();
+      const guess = providerForKey(key);
+      if (guess && guess !== settings.aiProvider) {
+        await saveSettings({ aiKey: key, aiProvider: guess, aiModel: defaultModel(guess) });
+        $('#s-ai-provider', view).value = guess;
+        drawAi();
+        return $('#s-ai-test', view).click();
+      }
+      await saveSettings({ aiKey: key, aiModel: $('#s-ai-model', box).value.trim() });
       b.disabled = true;
       b.textContent = 'Проверяю…';
       try { toast('ИИ работает: apple — ' + (await testAi())); }
