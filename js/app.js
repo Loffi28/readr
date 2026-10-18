@@ -65,7 +65,17 @@ async function start() {
     });
   }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Вышла новая версия — перезапускаемся, чтобы не работать на старом коде.
+    let hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloading) { reloading = true; location.reload(); }
+      hadController = true;
+    });
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // Установленное приложение на телефоне может неделями не перезагружаться — проверяем обновления при возврате.
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
   }
 }
 
